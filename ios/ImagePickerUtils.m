@@ -124,18 +124,6 @@
     return [NSNumber numberWithLong:fileSize];
 }
 
-+ (CGSize)getVideoDimensionsFromUrl:(NSURL *)url {
-    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:nil];
-    NSArray *tracks = [asset tracksWithMediaType:AVMediaTypeVideo];
-    
-    if ([tracks count] > 0) {
-        AVAssetTrack *track = [tracks objectAtIndex:0];
-        return track.naturalSize;
-    }
-    
-    return CGSizeMake(0, 0);
-}
-
 + (UIImage*)resizeImage:(UIImage*)image maxWidth:(float)maxWidth maxHeight:(float)maxHeight
 {
     if ((maxWidth == 0) || (maxHeight == 0)) {
@@ -166,20 +154,6 @@
     UIGraphicsEndImageContext();
 
     return newImage;
-}
-
-+ (PHAsset *)fetchPHAssetOnIOS13:(NSDictionary<NSString *,id> *)info
-{
-    NSURL *referenceURL = [info objectForKey:UIImagePickerControllerReferenceURL];
-
-    if(!referenceURL) {
-      return nil;
-    }
-
-    // We fetch the asset like this to support iOS 10 and lower
-    // see: https://stackoverflow.com/a/52529904/4177049
-    PHFetchResult* fetchResult = [PHAsset fetchAssetsWithALAssetURLs:@[referenceURL] options:nil];
-    return fetchResult.firstObject;
 }
 
 @end
