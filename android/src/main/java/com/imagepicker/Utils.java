@@ -231,7 +231,7 @@ public class Utils {
             return;
         }
         ExifInterface exifInterface = new ExifInterface(file);
-        exifInterface.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED);
+        exifInterface.setAttribute(ExifInterface.TAG_ORIENTATION, String.valueOf(ExifInterface.ORIENTATION_UNDEFINED));
         exifInterface.saveAttributes();
     }
 
