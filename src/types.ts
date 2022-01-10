@@ -27,7 +27,9 @@ export interface Asset {
   type?: string;
   fileName?: string;
   duration?: number;
-  timestamp?: string,
+  bitrate?: number;
+  timestamp?: string;
+  id?: string;
 }
 
 export interface ImagePickerResponse {

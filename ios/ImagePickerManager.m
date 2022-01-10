@@ -158,19 +158,15 @@ RCT_EXPORT_METHOD(launchImageLibrary:(NSDictionary *)options callback:(RCTRespon
     asset[@"height"] = @(image.size.height);
     
     if(phAsset){
-        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-        [formatter setTimeZone:[NSTimeZone timeZoneWithAbbreviation:@"UTC"]];
-        [formatter setDateFormat:@"yyyy-MM-dd'T'HH:mm:ss.SSSZ"];
-        NSString *creationDate = [formatter stringFromDate:phAsset.creationDate];
-        
-        asset[@"timestamp"] = creationDate;
-        // Add more exif data here ...
+        asset[@"timestamp"] = [self getDateTimeInUTC:phAsset.creationDate];
+        asset[@"id"] = phAsset.localIdentifier;
+        // Add more extra data here ...
     }
     
     return asset;
 }
 
--(NSMutableDictionary *)mapVideoToAsset:(NSURL *)url error:(NSError **)error {
+-(NSMutableDictionary *)mapVideoToAsset:(NSURL *)url phAsset:(PHAsset * _Nullable)phAsset error:(NSError **)error {
     NSString *fileName = [url lastPathComponent];
     NSString *path = [[NSTemporaryDirectory() stringByStandardizingPath] stringByAppendingPathComponent:fileName];
     NSURL *videoDestinationURL = [NSURL fileURLWithPath:path];
@@ -196,19 +192,36 @@ RCT_EXPORT_METHOD(launchImageLibrary:(NSDictionary *)options callback:(RCTRespon
             [fileManager copyItemAtURL:url toURL:videoDestinationURL error:error];
           }
 
-          if (error) {
+          if (error && *error) {
               return nil;
           }
         }
     }
-    
+
     NSMutableDictionary *asset = [[NSMutableDictionary alloc] init];
+    CGSize dimentions = [ImagePickerUtils getVideoDimensionsFromUrl:videoDestinationURL];
+    asset[@"fileName"] = fileName;
     asset[@"duration"] = [NSNumber numberWithDouble:CMTimeGetSeconds([AVAsset assetWithURL:videoDestinationURL].duration)];
     asset[@"uri"] = videoDestinationURL.absoluteString;
     asset[@"type"] = [ImagePickerUtils getFileTypeFromUrl:videoDestinationURL];
     asset[@"fileSize"] = [ImagePickerUtils getFileSizeFromUrl:videoDestinationURL];
-    
+    asset[@"width"] = @(dimentions.width);
+    asset[@"height"] = @(dimentions.height);
+
+    if(phAsset){
+        asset[@"timestamp"] = [self getDateTimeInUTC:phAsset.creationDate];
+        asset[@"id"] = phAsset.localIdentifier;
+        // Add more extra data here ...
+    }
+
     return asset;
+}
+
+- (NSString *) getDateTimeInUTC:(NSDate *)date {
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    [formatter setTimeZone:[NSTimeZone timeZoneWithAbbreviation:@"UTC"]];
+    [formatter setDateFormat:@"yyyy-MM-dd'T'HH:mm:ss.SSSZ"];
+    return [formatter stringFromDate:date];
 }
 
 - (void)checkCameraPermissions:(void(^)(BOOL granted))callback
@@ -330,32 +343,28 @@ RCT_EXPORT_METHOD(launchImageLibrary:(NSDictionary *)options callback:(RCTRespon
 {
     dispatch_block_t dismissCompletionBlock = ^{
         NSMutableArray<NSDictionary *> *assets = [[NSMutableArray alloc] initWithCapacity:1];
+        PHAsset *asset = nil;
+
+        // If include extra, we fetch the PHAsset, this required library permissions
+        if([self.options[@"includeExtra"] boolValue]) {
+          asset = [ImagePickerUtils fetchPHAssetOnIOS13:info];
+        }
 
         if ([info[UIImagePickerControllerMediaType] isEqualToString:(NSString *) kUTTypeImage]) {
-            PHAsset *asset = nil;
             UIImage *image = [ImagePickerManager getUIImageFromInfo:info];
-            
-            // If include exif, we fetch the PHAsset, this required library permissions
-            if([self.options[@"includeExtra"] boolValue]) {
-                NSURL *referenceURL = [info objectForKey:UIImagePickerControllerReferenceURL];
-                
-                if(referenceURL != nil) {
-                    // We fetch the asset like this to support iOS 10 and lower
-                    // see: https://stackoverflow.com/a/52529904/4177049
-                    PHFetchResult* fetchResult = [PHAsset fetchAssetsWithALAssetURLs:@[referenceURL] options:nil];
-                    asset = fetchResult.firstObject;
-                }
-            }
             
             [assets addObject:[self mapImageToAsset:image data:[NSData dataWithContentsOfURL:[ImagePickerManager getNSURLFromInfo:info]] phAsset:asset]];
         } else {
             NSError *error;
-            NSDictionary *asset = [self mapVideoToAsset:info[UIImagePickerControllerMediaURL] error:&error];
-            if (asset == nil) {
-                self.callback(@[@{@"errorCode": errOthers, @"errorMessage":  error.localizedFailureReason}]);
+            NSDictionary *videoAsset = [self mapVideoToAsset:info[UIImagePickerControllerMediaURL] phAsset:asset error:&error];
+                        
+            if (videoAsset == nil) {
+                NSString *errorMessage = error.localizedFailureReason;
+                if (errorMessage == nil) errorMessage = @"Video asset not found";
+                self.callback(@[@{@"errorCode": errOthers, @"errorMessage": errorMessage}]);
                 return;
             }
-            [assets addObject:asset];
+            [assets addObject:videoAsset];
         }
 
         NSMutableDictionary *response = [[NSMutableDictionary alloc] init];
@@ -409,7 +418,7 @@ RCT_EXPORT_METHOD(launchImageLibrary:(NSDictionary *)options callback:(RCTRespon
         PHAsset *asset = nil;
         NSItemProvider *provider = result.itemProvider;
 
-        // If include exif, we fetch the PHAsset, this required library permissions
+        // If include extra, we fetch the PHAsset, this required library permissions
         if([self.options[@"includeExtra"] boolValue] && result.assetIdentifier != nil) {
             PHFetchResult* fetchResult = [PHAsset fetchAssetsWithLocalIdentifiers:@[result.assetIdentifier] options:nil];
             asset = fetchResult.firstObject;
@@ -433,7 +442,7 @@ RCT_EXPORT_METHOD(launchImageLibrary:(NSDictionary *)options callback:(RCTRespon
             }];
         } else if ([provider hasItemConformingToTypeIdentifier:(NSString *)kUTTypeMovie]) {
             [provider loadFileRepresentationForTypeIdentifier:(NSString *)kUTTypeMovie completionHandler:^(NSURL * _Nullable url, NSError * _Nullable error) {
-                [assets addObject:[self mapVideoToAsset:url error:nil]];
+                [assets addObject:[self mapVideoToAsset:url phAsset:asset error:nil]];
                 dispatch_group_leave(completionGroup);
             }];
         } else {
