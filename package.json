@@ -3,7 +3,7 @@
     "source": "src",
     "output": "lib",
     "targets": [
-      "typescript"
+      "commonjs"
     ]
   },
   "_from": "react-native-image-picker@^4.3.0",
